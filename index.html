@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>亚马逊广告数据分析工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+   
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        keyword: '#3B82F6',
+                        asin: '#8B5CF6',
+                        category: '#10B981',
+                        'auto': '#F97316'
+                    }
+                }
+            }
+        }
+    </script>
+    
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .transition-custom { transition: all 0.3s ease; }
+            .scrollbar-hide::-webkit-scrollbar { display: none; }
+            .card-hover { @apply hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 min-h-screen">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-line-chart text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold">亚马逊广告数据分析工具</h1>
+            </div>
+            <button id="helpBtn" class="text-gray-600 hover:text-primary transition-custom">
+                <i class="fa fa-question-circle mr-1"></i> 帮助
+            </button>
+        </div>
+    </header>
+
+
+    <main class="container mx-auto px-4 py-8">
+        <section id="uploadSection" class="max-w-4xl mx-auto">
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                <h2 class="text-xl font-semibold mb-4">上传<span class="text-primary">广告数据</span>文件</h2>
+                
+                <div id="dropArea" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-custom mb-6">
+                    <i class="fa fa-cloud-upload text-4xl text-gray-400 mb-4"></i>
+                    <p class="mb-2 text-gray-600">拖放CSV或Excel文件到此处，或</p>
+                    <label class="inline-block bg-primary text-white px-4 py-2 rounded-lg cursor cursor-pointer hover:bg-primary/90 transition-custom">
+                        <i class="fa fa-file-excel-o mr-1"></i> 选择文件
+                        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" class="hidden">
+                    </label>
+                    <p class="mt-4 text-xs text-gray-500">支持格式: .csv, .xlsx, .xls</p>
+                </div>
+                
+
+                
+                <div id="fileInfo" class="hidden bg-gray-50 p-4 rounded-lg mb-6">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center">
+                            <i class="fa fa-file-text-o text-primary mr-2"></i>
+                            <span id="fileName" class="font-medium"></span>
+                        </div>
+                        <button id="removeFile" class="text-gray-500 hover:text-red-500 transition-custom">
+                            <i class="fa fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="fieldMappingInfo" class="text-sm"></div>
+                </div>
+                
+                <button id="analyzeBtn" class="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90 transition-custom disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fa fa-bar-chart mr-2"></i> 开始分析
+                </button>
+            </div>
+        </section>
+        
+
+        <section id="loadingSection" class="max-w-4xl mx-auto hidden">
+            <div class="bg-white rounded-xl shadow-md p-8 text-center">
+                <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <h2 class="text-xl font-semibold mb-2">正在分析数据</h2>
+                <p class="text-gray-600 mb-4">请稍候，系统正在处理您的数据...</p>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div id="progressBar" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p class="text-xs text-gray-500">一般就几秒钟，太久请刷新网页</p>
+            </div>
+        </section>
+        
+
+        <section id="resultsSection" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-eye mr-2"></i> 总曝光量
+                    </div>
+                    <div id="totalImpressions" class="text-2xl font-bold">0</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-mouse-pointer mr-2"></i> 总点击量
+                    </div>
+                    <div id="totalClicks" class="text-2xl font-bold">0</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-money mr-2"></i> 总花费
+                    </div>
+                    <div id="totalSpend" class="text-2xl font-bold">$0.00</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-shopping-cart mr-2"></i> 总销售额
+                    </div>
+                    <div id="totalSales" class="text-2xl font-bold">$0.00</div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-percent mr-2"></i> 点击率 (CTR)
+                    </div>
+                    <div id="ctr" class="text-2xl font-bold text-keyword">0.00%</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-exchange mr-2"></i> 转化率
+                    </div>
+                    <div id="conversionRate" class="text-2xl font-bold text-green-500">0.00%</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-line-chart mr-2"></i> 广告销售成本比 (ACoS)
+                    </div>
+                    <div id="acos" class="text-2xl font-bold text-amber-500">0.00%</div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-shopping-bag mr-2"></i> 总订单数
+                    </div>
+                    <div id="totalOrders" class="text-2xl font-bold">0</div>
+                </div>
+            </div>
+            
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover" id="keywordTypeCard">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-key text-keyword mr-2"></i> 关键词投放数
+                    </div>
+                    <div id="keywordCount" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        来自 <span id="keywordAdGroupCount" class="font-medium text-keyword">0</span> 个广告组
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover" id="asinTypeCard">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-cube text-asin mr-2"></i> ASIN投放数
+                    </div>
+                    <div id="asinCount" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        来自 <span id="asinAdGroupCount" class="font-medium text-asin">0</span> 个广告组
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover" id="categoryTypeCard">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-folder text-category mr-2"></i> 类目投放数
+                    </div>
+                    <div id="categoryCount" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        来自 <span id="categoryAdGroupCount" class="font-medium text-category">0</span> 个广告组
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6 card-hover" id="autoTypeCard">
+                    <div class="text-gray-500 mb-1 flex items-center">
+                        <i class="fa fa-magic text-auto mr-2"></i> 自动投放数
+                    </div>
+                    <div id="autoCount" class="text-2xl font-bold">0</div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        来自 <span id="autoAdGroupCount" class="font-medium text-auto">0</span> 个自动广告组
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white rounded-xl shadow-sm p-6">
+                    <h3 class="text-lg font-semibold mb-4">投放类型表现对比</h3>
+                    <div class="h-80">
+                        <canvas id="targetingComparisonChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-sm p-6">
+                    <h3 class="text-lg font-semibold mb-4">投放类型转化率雷达图</h3>
+                    <div class="h-80">
+                        <canvas id="conversionByTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="searchTermDetails" class="bg-white rounded-xl shadow-sm p-6 mb-8 hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-semibold flex items-center">
+                        <i class="fa fa-search-plus text-primary mr-2"></i>
+                        <span id="searchTermDetailsTitle">搜索词详情</span>
+                    </h3>
+                    <button id="closeSearchTermDetails" class="text-gray-500 hover:text-gray-800 transition-custom">
+                        <i class="fa fa-times text-lg"></i>
+                    </button>
+                </div>
+                
+                <div id="searchTermDetailsContent">
+                </div>
+            </div>
+            
+
+            <div class="bg-white rounded-xl shadow-sm p-6 mb-8">
+                <h3 class="text-lg font-semibold mb-4 text-category flex items-center">
+                    <i class="fa fa-folder mr-2"></i> 类目投放详细分析
+                </h3>
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                    <div class="bg-category/5 p-4 rounded-lg flex-1">
+                        <h4 class="font-medium text-sm mb-2">类目投放特点</h4>
+                        <ul class="text-xs text-gray-600 space-y-1">
+                            <li>• 面向特定产品类目的广泛投放</li>
+                            <li>• 覆盖可能对整个类目感兴趣的用户</li>
+                        </ul>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg flex-1">
+                        <h4 class="font-medium text-sm mb-2">搜索词细分说明</h4>
+                        <ul class="text-xs text-gray-600 space-y-1">
+                            <li>• ASIN搜索词：customer search term出现的asin，大部分情况为广告投放到了详情页</li>
+                            <li>• 分析ASIN搜索词占比，可了解广告投放精准情况</li>
+                        </ul>
+                    </div>
+                </div>
+                <div id="categoryTargetingAnalysis" class="space-y-4">
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-sm p-6 mb-8">
+                <h3 class="text-lg font-semibold mb-4 text-auto flex items-center">
+                    <i class="fa fa-magic mr-2"></i> 自动投放广告组详细分析
+                </h3>
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                    <div class="bg-auto/5 p-4 rounded-lg flex-1">
+                        <h4 class="font-medium text-sm mb-2">自动投放说明</h4>
+                        <ul class="text-xs text-gray-600 space-y-1">
+                            <li>• 作用：低成本流量测试</li>
+                            <li>• 功能：跑词和跑关联流量</li>
+                            <li>• 目的：方便手动精准放量</li>
+                        </ul>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg flex-1">
+                        <h4 class="font-medium text-sm mb-2">优化建议</h4>
+                        <ul class="text-xs text-gray-600 space-y-1">
+                            <li>• ASIN搜索词占比高的，用来筛选关联流量</li>
+                            <li>• ASIN搜索词占比低的，用来筛选搜索词</li>
+                            <li>• 表现好的ASIN/搜索词，转为手动投放</li>
+                        </ul>
+                    </div>
+                </div>
+                <div id="autoAdGroupsAnalysis" class="space-y-4">
+                </div>
+            </div>
+            
+            <div class="mb-8">
+                <h3 class="text-xl font-semibold mb-6">最佳投放表现</h3>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-keyword flex items-center">
+                            <i class="fa fa-key mr-2"></i> 关键词投放 (按ACoS排序)
+                        </h4>
+                        <div id="topKeywords" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-asin flex items-center">
+                            <i class="fa fa-cube mr-2"></i> ASIN投放 (按ACoS排序)
+                        </h4>
+                        <div id="topAsins" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-category flex items-center">
+                            <i class="fa fa-folder mr-2"></i> 类目投放 (按ACoS排序)
+                        </h4>
+                        <div id="topCategories" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-auto flex items-center">
+                            <i class="fa fa-magic mr-2"></i> 自动投放广告组 (按ACoS排序)
+                        </h4>
+                        <div id="topAuto" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+
+            <div class="mb-8">
+                <h3 class="text-xl font-semibold mb-6">优化建议：仅供参考，请自行斟酌</h3>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-red-500 flex items-center">
+                            <i class="fa fa-pause-circle mr-2"></i> 建议暂停的投放
+                        </h4>
+                        <p class="text-sm text-gray-500 mb-4">高花费但无转化的投放项</p>
+                        <div id="pauseSuggestions" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-green-500 flex items-center">
+                            <i class="fa fa-arrow-up mr-2"></i> 建议提高出价
+                        </h4>
+                        <p class="text-sm text-gray-500 mb-4">低ACoS且有良好转化的投放项</p>
+                        <div id="increaseBidSuggestions" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h4 class="text-md font-semibold mb-4 text-amber-500 flex items-center">
+                            <i class="fa fa-arrow-down mr-2"></i> 建议降低出价
+                        </h4>
+                        <p class="text-sm text-gray-500 mb-4">高ACoS但有一定转化的投放项</p>
+                        <div id="decreaseBidSuggestions" class="space-y-2 max-h-96 overflow-y-auto pr-2 scrollbar-hide">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mb-8">
+                <button id="newAnalysisBtn" class="bg-primary text-white px-6 py-3 rounded-lg font-medium hover:bg-primary/90 transition-custom">
+                    <i class="fa fa-refresh mr-2"></i> 开始新的分析
+                </button>
+            </div>
+        </section>
+    </main>
+    
+
+    <footer class="bg-white border-t border-gray-200 py-6">
+        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+            <p>亚马逊广告分析工具 &copy; 2025</p>
+            <p class="mt-1">上传的数据仅在您的浏览器中处理，不会上传到服务器</p>
+        </div>
+    </footer>
+    
+    
+    <div id="helpModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-bold">使用帮助</h2>
+                    <button id="closeHelpBtn" class="text-gray-500 hover:text-gray-800">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-3">如何使用此工具？</h3>
+                <ol class="list-decimal pl-5 space-y-2 mb-6">
+                    <li>准备包含亚马逊搜索词报告的CSV或Excel文件</li>
+                    <li>将文件拖放到上传区域，或点击"选择文件"按钮上传</li>
+                    <li>系统会自动解析文件并显示字段映射情况</li>
+                    <li>点击"开始分析"按钮生成分析报告</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
